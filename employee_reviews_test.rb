@@ -1,30 +1,111 @@
 require 'minitest/autorun'
 require 'minitest/pride'
+
+require 'rubygems'
+require 'bundler/setup'
+require 'active_record'
+require 'pry'
+
+ActiveRecord::Base.establish_connection({
+  adapter: 'sqlite3',
+  database: 'test.sqlite3'
+})
+
+# migrations
+
+require './employee'
 require './department'
+require './company'
+require './employees_and_departments_migration'
+
+begin
+  EmployeeAndDepartmentsMigration.migrate(:down)
+rescue
+
+end
+
+EmployeeAndDepartmentsMigration.migrate(:up)
+
 
 class EmployeeReviews < Minitest::Test
 
   def test_classes_exist
     assert Department
     assert Employee
+    assert Company
   end
 
+  def test_can_create_new_company
+    a = Company.new(name: "Apple Inc.")
+    a.save
+    assert a
+    assert_equal "Apple Inc.", a.name
+    assert_equal false, a.new_record?
+  end
+
+
+  def test_a_company_can_have_many_departments
+    a = Company.create(name: "Apple Inc.")
+    dept = Department.create(name: "Marketing")
+    a.add_department(dept)
+
+    assert_equal [dept], a.departments
+  end
+
+  def test_a_company_can_have_many_employees
+    a = Company.create(name: "Apple Inc.")
+    dept = Department.create(name: "Marketing")
+    a.add_department(dept)
+
+    emp_1 = Employee.create(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
+    emp_2 = Employee.create(name: "Bob", email: "b@mail.com", phone: "914-555-5555", salary: 10.00)
+
+    dept.add_employee(emp_1)
+    dept.add_employee(emp_2)
+
+    assert_equal [emp_1, emp_2], a.employees
+  end
+
+
   def test_can_create_new_department
-    a = Department.new("Marketing")
+    a = Department.new(name: "Marketing")
+    a.save
     assert a
     assert_equal "Marketing", a.name
+    assert_equal false, a.new_record?
   end
 
   def test_can_create_new_employee
-    new_employee = Employee.new(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
+    new_employee = Employee.create(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
     assert new_employee
+    assert_equal false, new_employee.new_record?
+  end
+
+  def test_cannot_create_new_employee_if_name_blank
+    new_employee = Employee.create(email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
+    assert new_employee
+    assert_equal false, new_employee.save
+  end
+
+  def test_employee_can_belong_to_a_department
+    a = Department.create(name: "Marketing")
+    emp_1 = Employee.create!(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
+
+    a.add_employee(emp_1)
+
+    assert_equal a, emp_1.department
+    assert_equal "Marketing", emp_1.department.name
   end
 
   def test_can_add_employee_to_a_department
-    a = Department.new("Marketing")
-    new_employee = Employee.new(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
-    a.add_employee(new_employee)
-    assert_equal [new_employee], a.staff
+    a = Department.create(name: "Marketing")
+    emp_1 = Employee.create!(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
+    emp_2 = Employee.create(name: "Bob", email: "b@mail.com", phone: "914-555-5555", salary: 10.00)
+
+    a.add_employee(emp_1)
+    a.add_employee(emp_2)
+
+    assert_equal [emp_1, emp_2], a.staff
   end
 
   def test_can_get_employee_name
@@ -38,12 +119,12 @@ class EmployeeReviews < Minitest::Test
   end
 
   def test_can_get_a_department_name
-    a = Department.new("Marketing")
+    a = Department.new(name: "Marketing")
     assert_equal "Marketing", a.name
   end
 
   def test_total_department_salary
-    a = Department.new("Marketing")
+    a = Department.new(name: "Marketing")
     new_employee = Employee.new(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
     old_employee = Employee.new(name: "Yvonne", email: "Yvonne@urFired.com", phone: "919-123-4567", salary: 40000.00)
     assert a.add_employee(new_employee)
@@ -54,6 +135,7 @@ class EmployeeReviews < Minitest::Test
   def test_add_employee_review
     xavier = Employee.new(name: "Xavier", email: "ProfX@marvel.com", phone: "911", salary: 70000.00)
     assert xavier.add_employee_review(positive_review_one)
+    assert_equal true, xavier.satisfactory
   end
 
   def test_set_employee_performance
@@ -68,6 +150,7 @@ class EmployeeReviews < Minitest::Test
   def test_give_raise_by_percent
     new_employee = Employee.new(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
     assert_equal 54000, new_employee.raise_by_percent(0.08)
+    assert_equal 54000, new_employee.salary
   end
 
   def test_give_raise_by_amount
@@ -76,7 +159,7 @@ class EmployeeReviews < Minitest::Test
   end
 
   def test_department_raises_based_on_criteria
-    a = Department.new("Marketing")
+    a = Department.new(name: "Marketing")
     xavier = Employee.new(name: "Xavier", email: "ProfX@marvel.com", phone: "911", salary: 70000.00)
     new_employee = Employee.new(name: "Dan", email: "d@mail.com", phone: "914-555-5555", salary: 50000.00)
     old_employee = Employee.new(name: "Yvonne", email: "Yvonne@urFired.com", phone: "919-123-4567", salary: 40000.00)
